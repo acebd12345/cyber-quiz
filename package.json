@@ -1,0 +1,26 @@
+{
+  "name": "cyber-ethics-quiz",
+  "version": "1.0.0",
+  "description": "Multiplayer Real-Time Digital Literacy & InfoSec Quiz Platform (Kahoot/ClassQuiz style) with Group Password Whitelist & Anti-Cheat Architecture",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node tests/security.test.js",
+    "test:e2e": "node tests/e2e.browser.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "express": "^4.21.1",
+    "express-rate-limit": "^7.4.1",
+    "helmet": "^8.0.0",
+    "pg": "^8.13.1",
+    "qrcode": "^1.5.4",
+    "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "puppeteer-core": "^23.11.1"
+  }
+}

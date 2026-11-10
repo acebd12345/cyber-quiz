@@ -1,0 +1,11 @@
+node_modules/
+.git/
+.env
+tests/
+docs/
+outputs/
+*.log
+*.pdf
+README.md
+bgm_archive_old/
+trial-questions-5.json

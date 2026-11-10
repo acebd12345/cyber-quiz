@@ -1,0 +1,11 @@
+node_modules
+npm-debug.log
+.git
+.env
+tests
+docs
+outputs
+*.pdf
+README.md
+bgm_archive_old
+trial-questions-5.json

@@ -1,0 +1,1190 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CyberQuiz｜神手速快問快答大亂鬥</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <!-- 頂部導覽列 -->
+  <header class="topbar">
+    <a href="/" class="brand" id="brandHomeBtn">
+      <span class="brand-badge">CyberQuiz</span>
+      <span class="brand-title">神手速快問快答大亂鬥</span>
+    </a>
+    <div class="topbar-actions">
+      <span id="connStatusBadge" class="status-indicator status-online">已連線</span>
+      <nav class="mode-switcher hidden" aria-label="角色切換">
+        <button type="button" id="switchPlayerBtn" class="btn btn-primary btn-sm">參賽者</button>
+        <button type="button" id="switchHostBtn" class="btn btn-ghost btn-sm">主持人</button>
+      </nav>
+    </div>
+  </header>
+
+  <!-- 斷線全寬警示列 -->
+  <div id="offlineBanner" class="offline-banner hidden" role="status" aria-live="assertive">
+    <span>連線中斷，正在重新連線。恢復前無法送出答案。</span>
+  </div>
+
+  <!-- 非阻斷式 Toast 通知 -->
+  <div id="toastContainer" class="toast-container" aria-live="polite"></div>
+
+  <main id="mainContent" class="main-container">
+    <!-- ==================== 參賽者介面 (PLAYER VIEW) ==================== -->
+    <section id="playerView" class="view-section">
+      <!-- 1. 加入房間 -->
+      <div id="playerJoinCard" class="card card-narrow">
+        <div class="card-header">
+          <h1>加入測驗</h1>
+          <p class="subtitle">輸入主持人提供的 6 位數房間 PIN。</p>
+        </div>
+
+        <!-- Step 1: 查詢房間 PIN -->
+        <form id="pinLookupForm" class="form-stack" novalidate>
+          <div class="form-group">
+            <label for="inputRoomPin">房間 PIN</label>
+            <div class="pin-input-row">
+              <input
+                type="text"
+                id="inputRoomPin"
+                inputmode="numeric"
+                pattern="[0-9]{6}"
+                maxlength="6"
+                placeholder="例如：123456"
+                autocomplete="off"
+                required
+                aria-describedby="pinError"
+                class="input-lg mono-input"
+              />
+              <button type="submit" id="btnLookupPin" class="btn btn-primary">繼續</button>
+              <button type="button" id="btnChangePin" class="btn btn-secondary hidden">更換房間</button>
+            </div>
+            <p id="pinError" class="field-error hidden" role="alert"></p>
+          </div>
+        </form>
+
+        <!-- Step 2: 組別、密碼與暱稱 -->
+        <form id="playerJoinForm" class="form-stack form-divider hidden" novalidate>
+          <div class="room-found-banner">
+            <div>
+              <div class="banner-label">房間名稱</div>
+              <div id="joinRoomTitle" class="banner-title">神手速快問快答大亂鬥</div>
+            </div>
+            <div class="banner-meta">
+              <span>目前人數：</span>
+              <strong id="joinRoomCapacity" class="mono-text">0／100 人</strong>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="selectGroupCode">選擇組別</label>
+            <select
+              id="selectGroupCode"
+              required
+              aria-describedby="groupError"
+              class="input-lg"
+            ></select>
+            <p id="groupError" class="field-error hidden" role="alert"></p>
+          </div>
+
+          <div class="form-group">
+            <label for="inputGroupPassword">組別密碼</label>
+            <input
+              type="password"
+              id="inputGroupPassword"
+              maxlength="32"
+              placeholder="輸入主持人提供的組別密碼"
+              autocomplete="off"
+              required
+              aria-describedby="passwordError"
+              class="input-lg"
+            />
+            <p id="passwordError" class="field-error hidden" role="alert"></p>
+          </div>
+
+          <div class="form-group">
+            <label for="inputNickname">暱稱</label>
+            <input
+              type="text"
+              id="inputNickname"
+              maxlength="20"
+              placeholder="例如：王小明（1–20 字）"
+              autocomplete="off"
+              required
+              aria-describedby="nicknameError"
+              class="input-lg"
+            />
+            <p id="nicknameError" class="field-error hidden" role="alert"></p>
+          </div>
+
+          <p id="joinGeneralError" class="field-error hidden" role="alert"></p>
+
+          <button type="submit" id="btnJoinRoom" class="btn btn-primary btn-lg btn-block">
+            加入測驗
+          </button>
+        </form>
+      </div>
+
+      <!-- 參賽者進入房間後的畫面 -->
+      <div id="playerGameArea" class="hidden">
+        <!-- 參賽者簡潔狀態列（手機可展開詳情） -->
+        <div class="player-hud">
+          <div class="hud-left">
+            <span id="hudGroupBadge" class="badge">第一組</span>
+            <strong id="hudNickname" class="hud-name">參賽者</strong>
+          </div>
+          <div class="hud-right">
+            <details class="hud-details">
+              <summary class="hud-summary">
+                <span id="hudScore" class="hud-score mono-text">0 分</span>
+                <span id="hudRank" class="hud-rank">排名 -</span>
+              </summary>
+              <div class="hud-dropdown">
+                <span id="hudStreak" class="text-sm text-muted">連續答對 0 題</span>
+                <button type="button" id="btnPlayerLeave" class="btn btn-secondary btn-xs">離開測驗</button>
+              </div>
+            </details>
+          </div>
+        </div>
+
+        <!-- 狀態 A: 等待室 (LOBBY) -->
+        <div id="playerLobbyState" class="card state-card hidden">
+          <div class="card-header">
+            <h2>你已加入測驗</h2>
+            <p class="subtitle">主持人開始後，題目會自動顯示。</p>
+          </div>
+          <dl class="lobby-info-grid">
+            <div class="info-item">
+              <dt>房間名稱</dt>
+              <dd id="playerLobbyRoomTitle">神手速快問快答大亂鬥</dd>
+            </div>
+            <div class="info-item">
+              <dt>房間 PIN</dt>
+              <dd id="playerLobbyPin" class="mono-text">------</dd>
+            </div>
+            <div class="info-item">
+              <dt>所屬組別</dt>
+              <dd id="playerLobbyGroup">-</dd>
+            </div>
+            <div class="info-item">
+              <dt>參賽暱稱</dt>
+              <dd id="playerLobbyNickname">-</dd>
+            </div>
+            <div class="info-item">
+              <dt>目前人數</dt>
+              <dd id="playerLobbyCount" class="mono-text">0／100 人</dd>
+            </div>
+          </dl>
+        </div>
+
+        <!-- 狀態 B: 作答畫面 (QUESTION_OPEN) -->
+        <div id="playerQuestionState" class="state-card hidden">
+          <div class="sticky-question-bar" aria-live="polite">
+            <div class="question-top-bar">
+              <span id="playerQProgress" class="q-badge">第 1／10 題</span>
+              <div id="playerTimerPill" class="timer-pill">
+                <span>剩餘</span>
+                <strong id="playerTimerSec" class="mono-text">25</strong>
+                <span>秒</span>
+              </div>
+            </div>
+            <div class="timer-bar-track" role="progressbar" aria-label="剩餘作答時間">
+              <div id="playerTimerBar" class="timer-bar-fill"></div>
+            </div>
+          </div>
+
+          <div class="question-box">
+            <h2 id="playerQTitle" class="q-title">題目載入中</h2>
+            <p id="playerQScenario" class="q-scenario"></p>
+          </div>
+
+          <!-- 四色作答按鈕（手機維持 2×2 免捲動） -->
+          <div id="playerOptionsGrid" class="options-grid" role="group" aria-label="作答選項">
+            <button type="button" class="option-btn opt-a" data-option="A">
+              <span class="opt-shape" aria-hidden="true">▲ A</span>
+              <span id="playerOptTextA" class="opt-text"></span>
+            </button>
+            <button type="button" class="option-btn opt-b" data-option="B">
+              <span class="opt-shape" aria-hidden="true">◆ B</span>
+              <span id="playerOptTextB" class="opt-text"></span>
+            </button>
+            <button type="button" class="option-btn opt-c" data-option="C">
+              <span class="opt-shape" aria-hidden="true">● C</span>
+              <span id="playerOptTextC" class="opt-text"></span>
+            </button>
+            <button type="button" class="option-btn opt-d" data-option="D">
+              <span class="opt-shape" aria-hidden="true">■ D</span>
+              <span id="playerOptTextD" class="opt-text"></span>
+            </button>
+          </div>
+
+          <!-- 送出狀態列 -->
+          <div id="playerLockedBanner" class="locked-banner hidden" role="status" aria-live="polite">
+            <div class="locked-banner-main">
+              <strong id="playerLockedTitle">答案已送出</strong>
+              <span id="playerLockedMeta" class="text-muted text-sm mono-text"></span>
+            </div>
+            <p id="playerLockedNote" class="security-note">答案已送出，截止後公布結果。</p>
+          </div>
+        </div>
+
+        <!-- 狀態 C: 答案揭曉 (QUESTION_REVEAL) -->
+        <div id="playerRevealState" class="state-card hidden">
+          <!-- 1. 答對／答錯／本題未作答 & 2. 本題得分 & 3. 使用者選擇 -->
+          <div id="playerResultBanner" class="result-banner" role="status" aria-live="polite">
+            <div class="result-banner-row">
+              <h2 id="playerResultTitle">答對</h2>
+              <span id="playerResultPoints" class="result-points mono-text">+0 分</span>
+            </div>
+            <p id="playerResultChoice" class="result-choice"></p>
+          </div>
+
+          <!-- 4. 正確答案 & 5. 解釋 -->
+          <div class="card explanation-card">
+            <div class="explanation-header">
+              <span class="badge badge-success" id="playerCorrectOptionBadge">正確答案：C</span>
+              <strong id="playerRevealQTitle">題目名稱</strong>
+            </div>
+            <p id="playerRevealScenario" class="q-scenario-sm"></p>
+            <div class="correct-option-highlight" id="playerCorrectOptionText"></div>
+            <div class="explanation-box">
+              <div class="explanation-label">答案解析</div>
+              <p id="playerExplanationText" class="explanation-body"></p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 狀態 D: 排行榜與完成測驗 (LEADERBOARD / FINISHED) -->
+        <div id="playerLeaderboardState" class="state-card hidden">
+          <div class="card">
+            <div class="section-header">
+              <h2 id="playerLbHeading">目前排行榜</h2>
+              <p id="playerLbSubheading" class="subtitle"></p>
+            </div>
+
+            <!-- 本題單題最高分 MVP 聚光燈橫幅 (僅於 LEADERBOARD 顯示) -->
+            <div
+              id="playerQuestionMvpBanner"
+              class="mvp-spotlight-banner hidden"
+              role="status"
+              aria-live="polite"
+            ></div>
+
+            <div class="dual-board-grid">
+              <div>
+                <h3 class="board-title">個人排行榜（前 10 名）</h3>
+                <p class="board-rule">依總分排序；同分時比較答對題數與總答題時間。</p>
+                <div id="playerIndividualList" class="leaderboard-list"></div>
+              </div>
+              <div>
+                <h3 class="board-title">組別排行榜</h3>
+                <p class="board-rule">依平均分數排序；同分時比較組別總分。</p>
+                <div id="playerGroupList" class="leaderboard-list"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 測驗結束時顯示全 10 題解析回顧 -->
+          <div id="playerAllReviewCard" class="card section-mt hidden">
+            <div class="section-header">
+              <h3>完整題目與解析</h3>
+            </div>
+            <div id="playerAllReviewList" class="review-stack"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== 主持人控制台與投影展示 (HOST / DISPLAY VIEW) ==================== -->
+    <section id="hostView" class="view-section hidden">
+      <!-- 1. 主持人登入 -->
+      <div id="hostLoginCard" class="card card-narrow">
+        <div class="card-header">
+          <h1>主持人登入</h1>
+          <p class="subtitle">輸入管理帳號與密碼以進入後台。</p>
+        </div>
+        <form id="hostLoginForm" class="form-stack" novalidate>
+          <div class="form-group">
+            <label for="inputHostUsername">管理帳號</label>
+            <input
+              type="text"
+              id="inputHostUsername"
+              value="admin"
+              maxlength="32"
+              placeholder="例如：admin"
+              autocomplete="username"
+              required
+              class="input-lg"
+            />
+          </div>
+          <div class="form-group">
+            <label for="inputHostPassword">管理密碼</label>
+            <input
+              type="password"
+              id="inputHostPassword"
+              placeholder="輸入管理密碼"
+              autocomplete="current-password"
+              required
+              aria-describedby="hostPasswordError"
+              class="input-lg"
+            />
+            <p id="hostPasswordError" class="field-error hidden" role="alert"></p>
+          </div>
+          <button type="submit" id="btnHostLoginSubmit" class="btn btn-primary btn-lg btn-block">
+            登入
+          </button>
+        </form>
+      </div>
+
+      <!-- 2. 後台管理中心（房間管理／題庫管理／管理者與日誌） -->
+      <div id="hostSetupCard" class="card hidden">
+        <!-- 後台頂部身分與分頁切換列 -->
+        <div class="admin-Subnav-bar">
+          <div class="admin-tabs" role="tablist" aria-label="後台管理分頁">
+            <button
+              type="button"
+              id="tabBtnRooms"
+              role="tab"
+              aria-selected="true"
+              class="btn btn-primary btn-sm"
+            >
+              房間管理
+            </button>
+            <button
+              type="button"
+              id="tabBtnQuestions"
+              role="tab"
+              aria-selected="false"
+              class="btn btn-ghost btn-sm"
+            >
+              題庫管理
+            </button>
+            <button
+              type="button"
+              id="tabBtnAdmins"
+              role="tab"
+              aria-selected="false"
+              class="btn btn-ghost btn-sm hidden"
+            >
+              管理者與日誌
+            </button>
+          </div>
+
+          <div class="admin-identity-bar">
+            <span id="hostCurrentAdminLabel" class="text-sm">系統管理員 (admin)</span>
+            <span id="hostCurrentRoleBadge" class="badge badge-info">最高管理員</span>
+            <button type="button" id="btnHostLogout" class="btn btn-secondary btn-xs">
+              登出
+            </button>
+          </div>
+        </div>
+
+        <!-- ==================== 分頁一：房間管理 ==================== -->
+        <div id="hostTabRooms">
+          <div class="section-header-row">
+            <div>
+              <h1>建立房間</h1>
+              <p class="subtitle">設定房間參數與各組別密碼上限，建立時將自動鎖定當下啟用題庫。</p>
+            </div>
+            <div id="existingPinReconnectBox" class="inline-form">
+              <label for="inputReconnectPin" class="sr-only">既有房間 PIN</label>
+              <input
+                type="text"
+                id="inputReconnectPin"
+                placeholder="6 位數房間 PIN"
+                maxlength="6"
+                aria-describedby="reconnectPinError"
+                class="input-sm mono-input"
+              />
+              <button type="button" id="btnReconnectRoom" class="btn btn-secondary btn-sm">
+                重連房間
+              </button>
+            </div>
+          </div>
+          <p id="reconnectPinError" class="field-error hidden" role="alert"></p>
+
+          <!-- 目前活躍房間清單（方便主講人與控台助教進入控場） -->
+          <div id="activeRoomsSection" class="active-rooms-box hidden">
+            <div class="active-rooms-header">
+              <strong>目前進行中／待命房間</strong>
+              <button type="button" id="btnRefreshActiveRooms" class="btn btn-ghost btn-xs">
+                重新整理
+              </button>
+            </div>
+            <div id="activeRoomsList" class="active-rooms-list"></div>
+          </div>
+
+          <form id="hostCreateRoomForm" class="form-stack" novalidate>
+            <!-- 區塊一：基本設定 -->
+            <fieldset class="setup-fieldset">
+              <legend class="fieldset-legend">基本設定</legend>
+              <div class="grid-3">
+                <div class="form-group">
+                  <label for="setupRoomTitle">房間名稱</label>
+                  <input
+                    type="text"
+                    id="setupRoomTitle"
+                    value="神手速快問快答大亂鬥"
+                    maxlength="60"
+                    required
+                  />
+                </div>
+                <div class="form-group">
+                  <label for="setupMaxPlayers">人數上限</label>
+                  <input
+                    type="number"
+                    id="setupMaxPlayers"
+                    value="100"
+                    min="1"
+                    max="500"
+                    required
+                  />
+                </div>
+                <div class="form-group">
+                  <label for="setupTimeLimit">每題作答時間（秒）</label>
+                  <input
+                    type="number"
+                    id="setupTimeLimit"
+                    value="25"
+                    min="5"
+                    max="180"
+                    required
+                  />
+                </div>
+              </div>
+              <div class="form-group" style="margin-top: 12px">
+                <label for="setupBgmMode">背景音樂（BGM，僅於控場台／投影幕播放）</label>
+                <select id="setupBgmMode"></select>
+              </div>
+            </fieldset>
+
+            <!-- 區塊二：組別設定 -->
+            <fieldset class="setup-fieldset">
+              <legend class="fieldset-legend">組別設定</legend>
+              <div class="batch-generator-bar">
+                <div class="batch-controls">
+                  <label for="batchGroupCount">
+                    組數
+                    <input
+                      type="number"
+                      id="batchGroupCount"
+                      value="6"
+                      min="1"
+                      max="50"
+                      class="input-xs"
+                    />
+                  </label>
+                  <label for="batchGroupMaxMembers">
+                    每組人數上限
+                    <input
+                      type="number"
+                      id="batchGroupMaxMembers"
+                      value="5"
+                      min="1"
+                      max="100"
+                      class="input-xs"
+                    />
+                  </label>
+                  <button type="button" id="btnResizeGroups" class="btn btn-secondary btn-sm">
+                    調整組數與上限
+                  </button>
+                  <button
+                    type="button"
+                    id="btnBatchGenerateGroups"
+                    class="btn btn-secondary btn-sm"
+                  >
+                    重新產生組別與密碼
+                  </button>
+                  <button type="button" id="btnAddSingleGroup" class="btn btn-ghost btn-sm">
+                    新增單一組別
+                  </button>
+                  <button type="button" id="btnImportGroupsFile" class="btn btn-secondary btn-sm">
+                    匯入組別清單 (CSV／JSON)
+                  </button>
+                  <input
+                    type="file"
+                    id="inputImportGroupsFile"
+                    accept=".csv,.txt,.json,text/csv,application/json"
+                    class="hidden"
+                  />
+                  <button type="button" id="btnExportGroupsCsv" class="btn btn-ghost btn-sm">
+                    匯出組別 CSV
+                  </button>
+                </div>
+              </div>
+
+              <div class="groups-table-wrap">
+                <table class="groups-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">代碼</th>
+                      <th scope="col">組別名稱</th>
+                      <th scope="col">組別密碼</th>
+                      <th scope="col">人數上限</th>
+                      <th scope="col">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody id="setupGroupsTbody"></tbody>
+                </table>
+              </div>
+            </fieldset>
+
+            <p id="createRoomError" class="field-error hidden" role="alert"></p>
+
+            <!-- 區塊三：建立操作 -->
+            <div class="setup-submit-bar">
+              <button type="submit" id="btnCreateRoomSubmit" class="btn btn-primary btn-lg">
+                建立房間
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <!-- ==================== 分頁二：題庫管理 ==================== -->
+        <div id="hostTabQuestions" class="hidden">
+          <div class="section-header-row">
+            <div>
+              <h1>題庫管理</h1>
+              <p id="questionsRoleNotice" class="subtitle">
+                管理中央題庫；進行中的比賽房間已鎖定建立當下之題目快照，不受改題影響。
+              </p>
+            </div>
+            <div id="questionsAdminToolbar" class="inline-form">
+              <button type="button" id="btnExportQuestionsJson" class="btn btn-secondary btn-sm">
+                匯出題庫 JSON
+              </button>
+              <button type="button" id="btnImportQuestionsJson" class="btn btn-secondary btn-sm">
+                匯入題庫 JSON
+              </button>
+              <input
+                type="file"
+                id="inputImportQuestionsFile"
+                accept="application/json,.json"
+                class="hidden"
+              />
+              <button type="button" id="btnResetDefaultQuestions" class="btn btn-ghost btn-sm">
+                還原預設 10 題
+              </button>
+              <button type="button" id="btnOpenAddQuestion" class="btn btn-primary btn-sm">
+                新增題目
+              </button>
+            </div>
+          </div>
+
+          <div class="groups-table-wrap">
+            <table class="groups-table">
+              <thead>
+                <tr>
+                  <th scope="col">順序</th>
+                  <th scope="col">題目標題與情境摘要</th>
+                  <th scope="col">正解</th>
+                  <th scope="col">狀態</th>
+                  <th scope="col">最後更新</th>
+                  <th scope="col">操作</th>
+                </tr>
+              </thead>
+              <tbody id="questionsTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ==================== 分頁三：管理者與操作日誌 ==================== -->
+        <div id="hostTabAdmins" class="hidden">
+          <div class="section-header-row">
+            <div>
+              <h1>管理者帳號管理</h1>
+              <p class="subtitle">
+                新增或停用主持人帳號；重設密碼或停用帳號後，該帳號既有登入憑證將立即失效。
+              </p>
+            </div>
+            <button type="button" id="btnOpenAddAdmin" class="btn btn-primary btn-sm">
+              新增管理者
+            </button>
+          </div>
+
+          <div class="groups-table-wrap">
+            <table class="groups-table">
+              <thead>
+                <tr>
+                  <th scope="col">帳號</th>
+                  <th scope="col">顯示名稱</th>
+                  <th scope="col">權限角色</th>
+                  <th scope="col">狀態</th>
+                  <th scope="col">最後登入</th>
+                  <th scope="col">操作</th>
+                </tr>
+              </thead>
+              <tbody id="adminsTableBody"></tbody>
+            </table>
+          </div>
+
+          <div class="section-header-row section-mt">
+            <div>
+              <h2>系統操作稽核日誌</h2>
+              <p class="subtitle">記錄管理者登入、建房、改題、移除參賽者與權限異動。</p>
+            </div>
+            <button type="button" id="btnRefreshAuditLogs" class="btn btn-secondary btn-sm">
+              重新整理日誌
+            </button>
+          </div>
+
+          <div class="groups-table-wrap">
+            <table class="groups-table">
+              <thead>
+                <tr>
+                  <th scope="col">時間</th>
+                  <th scope="col">操作者</th>
+                  <th scope="col">動作</th>
+                  <th scope="col">內容說明</th>
+                  <th scope="col">來源 IP</th>
+                </tr>
+              </thead>
+              <tbody id="auditLogsTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- 主持人房間控制台與投影區 -->
+      <div id="hostActiveRoomArea" class="hidden">
+        <!-- 頂部固定資訊列 -->
+        <div class="host-control-bar">
+          <div class="host-room-meta">
+            <img
+              id="hostHeaderQrImg"
+              src="/api/qrcode"
+              alt="手機掃碼入場 QR Code"
+              class="qr-code-header"
+              width="68"
+              height="68"
+            />
+            <div class="pin-display-box">
+              <span class="pin-label">房間 PIN</span>
+              <span id="hostPinDisplay" class="pin-number mono-text">------</span>
+            </div>
+            <div>
+              <div class="host-title-row">
+                <h2 id="hostRoomTitleDisplay" class="host-room-title">神手速快問快答大亂鬥</h2>
+                <span id="displayModeBadge" class="badge badge-info hidden">投影模式</span>
+              </div>
+              <div class="host-stats-pills">
+                <span id="hostPlayerCountPill" class="badge">目前人數：0／100 人</span>
+                <span id="hostQuestionCountPill" class="badge">本房題數：10 題</span>
+                <span id="hostStatusPill" class="badge badge-info">尚未開始</span>
+              </div>
+              <!-- BGM 現場背景音樂控制列（管理員與投影幕皆可隨時開關／換歌／調音量） -->
+              <div id="hostBgmBar" class="bgm-control-bar" aria-label="背景音樂控制">
+                <button
+                  type="button"
+                  id="btnToggleBgm"
+                  class="btn btn-secondary btn-xs"
+                  title="開啟或關閉現場背景音樂"
+                >
+                  開啟 BGM
+                </button>
+                <select
+                  id="selectHostBgmTrack"
+                  class="bgm-track-select"
+                  aria-label="選擇背景音樂曲目"
+                ></select>
+                <button
+                  type="button"
+                  id="btnNextBgmTrack"
+                  class="btn btn-ghost btn-xs"
+                  title="切換下一首 BGM"
+                >
+                  下一首
+                </button>
+                <label class="bgm-volume-wrap" title="調整 BGM 音量">
+                  <span class="text-muted text-sm">音量</span>
+                  <input
+                    type="range"
+                    id="inputBgmVolume"
+                    min="0"
+                    max="100"
+                    value="45"
+                    class="bgm-volume-slider"
+                    aria-label="BGM 音量"
+                  />
+                </label>
+                <input
+                  type="file"
+                  id="inputCustomBgmFile"
+                  accept="audio/*"
+                  multiple
+                  class="hidden"
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- 主持控制操作區（每個狀態僅一個 Primary 按鈕） -->
+          <div id="hostActionButtons" class="host-action-buttons">
+            <button
+              type="button"
+              id="btnToggleProjectorMode"
+              class="btn btn-secondary btn-sm"
+            >
+              投影模式
+            </button>
+            <button
+              type="button"
+              id="btnOpenDisplayWindow"
+              class="btn btn-secondary btn-sm"
+            >
+              開啟展示頁
+            </button>
+            <button type="button" id="btnTogglePasswordsModal" class="btn btn-secondary btn-sm">
+              查看密碼
+            </button>
+            <button
+              type="button"
+              id="btnSyncRoomQuestions"
+              class="btn btn-secondary btn-sm"
+              title="將目前房間題目快照更新為最新題庫"
+            >
+              同步題庫
+            </button>
+            <button type="button" id="btnHostNewRoom" class="btn btn-ghost btn-sm">
+              後台管理
+            </button>
+            <button
+              type="button"
+              id="btnHostDeleteRoom"
+              class="btn btn-destructive-outline btn-sm"
+              title="永久刪除此房間"
+            >
+              刪除房間
+            </button>
+
+            <!-- 各階段單一主要操作 -->
+            <button type="button" id="btnHostNextQuestion" class="btn btn-primary btn-lg">
+              開始第一題
+            </button>
+            <button type="button" id="btnHostRevealAnswer" class="btn btn-primary btn-lg hidden">
+              提前截止
+            </button>
+            <button type="button" id="btnHostShowLeaderboard" class="btn btn-primary btn-lg hidden">
+              查看排行榜
+            </button>
+            <button type="button" id="btnHostFinishGame" class="btn btn-destructive btn-lg hidden">
+              結束比賽
+            </button>
+            <button type="button" id="btnHostSkipToNext" class="btn btn-ghost btn-sm hidden">
+              略過排行榜，直接下一題
+            </button>
+          </div>
+        </div>
+
+        <!-- 主持人與大銀幕展示頁等待室畫面 (LOBBY) -->
+        <div id="hostLobbyPanel" class="host-stage-panel">
+          <div class="card host-lobby-qr-banner">
+            <img
+              id="hostLobbyQrImg"
+              src="/api/qrcode"
+              alt="大銀幕房間入場 QR Code"
+              class="qr-code-img-lg"
+              width="216"
+              height="216"
+            />
+            <div class="host-lobby-qr-info">
+              <span class="badge badge-info">手機掃碼快速入場</span>
+              <h3>請用手機相機掃描左側 QR Code 加入測驗</h3>
+              <p class="subtitle">
+                掃描後將自動帶入本房間 PIN（<strong id="hostLobbyQrPinText" class="mono-text"
+                  >------</strong
+                >），選擇所屬組別並輸入組別密碼即可進入等待室。
+              </p>
+              <div class="qr-url-pill mono-text" id="hostLobbyQrUrlText"></div>
+            </div>
+          </div>
+
+          <div class="grid-lobby">
+            <div class="card">
+              <div class="section-header-row">
+                <h3>各組入場狀況</h3>
+                <span class="text-muted text-sm">參賽者輸入房間 PIN 與組別密碼後加入</span>
+              </div>
+              <div id="hostGroupsStatusList" class="groups-status-list"></div>
+            </div>
+
+            <div class="card">
+              <div class="section-header-row">
+                <h3>參賽者列表</h3>
+                <span id="hostKickHint" class="text-muted text-sm">可從「更多操作」移除異常參賽者</span>
+              </div>
+              <div id="hostPlayersGrid" class="players-table-wrap"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 主持人題目進行中與答案揭曉畫面 (QUESTION_OPEN & QUESTION_REVEAL) -->
+        <div id="hostQuestionPanel" class="host-stage-panel hidden">
+          <div class="card host-question-card">
+            <div class="host-q-header" aria-live="polite">
+              <span id="hostQNumberBadge" class="q-badge-lg">第 1／10 題</span>
+              <div class="host-q-counters">
+                <div class="counter-box">
+                  <span class="counter-label">已作答人數</span>
+                  <strong id="hostAnsweredCounter" class="counter-val mono-text">0／0</strong>
+                </div>
+                <div id="hostTimerBox" class="counter-box timer-counter-box">
+                  <span class="counter-label">剩餘時間</span>
+                  <strong id="hostTimerDisplay" class="counter-val mono-text">25 秒</strong>
+                </div>
+              </div>
+            </div>
+
+            <div class="timer-bar-track" role="progressbar" aria-label="剩餘作答時間">
+              <div id="hostTimerBar" class="timer-bar-fill"></div>
+            </div>
+
+            <h1 id="hostQTitle" class="host-q-title">題目名稱</h1>
+            <p id="hostQScenario" class="host-q-scenario">情境說明</p>
+
+            <!-- 四個選項展示 -->
+            <div id="hostOptionsGrid" class="host-options-grid">
+              <div class="host-opt-card opt-a" data-opt="A">
+                <div class="host-opt-top">
+                  <span class="opt-shape" aria-hidden="true">▲ A</span>
+                  <span id="hostOptCountA" class="opt-stat-badge mono-text hidden">0 人 (0%)</span>
+                </div>
+                <p id="hostOptTextA" class="host-opt-text"></p>
+                <div class="opt-bar-wrap hidden" id="hostOptBarWrapA">
+                  <div class="opt-bar-fill" id="hostOptBarA"></div>
+                </div>
+              </div>
+
+              <div class="host-opt-card opt-b" data-opt="B">
+                <div class="host-opt-top">
+                  <span class="opt-shape" aria-hidden="true">◆ B</span>
+                  <span id="hostOptCountB" class="opt-stat-badge mono-text hidden">0 人 (0%)</span>
+                </div>
+                <p id="hostOptTextB" class="host-opt-text"></p>
+                <div class="opt-bar-wrap hidden" id="hostOptBarWrapB">
+                  <div class="opt-bar-fill" id="hostOptBarB"></div>
+                </div>
+              </div>
+
+              <div class="host-opt-card opt-c" data-opt="C">
+                <div class="host-opt-top">
+                  <span class="opt-shape" aria-hidden="true">● C</span>
+                  <span id="hostOptCountC" class="opt-stat-badge mono-text hidden">0 人 (0%)</span>
+                </div>
+                <p id="hostOptTextC" class="host-opt-text"></p>
+                <div class="opt-bar-wrap hidden" id="hostOptBarWrapC">
+                  <div class="opt-bar-fill" id="hostOptBarC"></div>
+                </div>
+              </div>
+
+              <div class="host-opt-card opt-d" data-opt="D">
+                <div class="host-opt-top">
+                  <span class="opt-shape" aria-hidden="true">■ D</span>
+                  <span id="hostOptCountD" class="opt-stat-badge mono-text hidden">0 人 (0%)</span>
+                </div>
+                <p id="hostOptTextD" class="host-opt-text"></p>
+                <div class="opt-bar-wrap hidden" id="hostOptBarWrapD">
+                  <div class="opt-bar-fill" id="hostOptBarD"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 答案揭曉與解析 -->
+            <div id="hostExplanationBox" class="host-explanation-box hidden">
+              <div class="host-exp-header">
+                <span id="hostCorrectAnswerPill" class="badge badge-success">正確答案：C</span>
+                <span class="exp-tag">答案解析</span>
+              </div>
+              <p id="hostExplanationText" class="host-exp-body"></p>
+              <div id="hostRevealMvpLine" class="host-reveal-mvp-line hidden"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 主持人排行榜與測驗已結束畫面 (LEADERBOARD & FINISHED) -->
+        <div id="hostLeaderboardPanel" class="host-stage-panel hidden">
+          <div id="hostPodiumSection" class="card podium-card hidden">
+            <div class="section-header-row">
+              <div>
+                <h2>測驗已結束 — 最終前三名</h2>
+                <p class="subtitle">最終個人與組別成績如下，可匯出 CSV 留存。</p>
+              </div>
+              <div class="podium-actions">
+                <button type="button" id="btnExportCsv" class="btn btn-secondary btn-sm">
+                  匯出成績
+                </button>
+                <button type="button" id="btnFinishedNewRoom" class="btn btn-primary btn-sm">
+                  新建房間
+                </button>
+              </div>
+            </div>
+            <div id="hostPodiumContainer" class="podium-grid"></div>
+          </div>
+
+          <!-- 本題單題最高分 MVP 聚光燈橫幅 (僅於 LEADERBOARD 顯示) -->
+          <div
+            id="hostQuestionMvpBanner"
+            class="mvp-spotlight-banner hidden"
+            role="status"
+            aria-live="polite"
+          ></div>
+
+          <div class="dual-board-grid">
+            <div class="card">
+              <h3>個人排行榜</h3>
+              <p class="board-rule">依總分排序；同分時比較答對題數與總答題時間。</p>
+              <div id="hostIndividualLeaderboard" class="leaderboard-list"></div>
+            </div>
+            <div class="card">
+              <h3>組別排行榜</h3>
+              <p class="board-rule">依平均分數排序；同分時比較組別總分。</p>
+              <div id="hostGroupLeaderboard" class="leaderboard-list"></div>
+            </div>
+          </div>
+
+          <!-- 測驗結束時顯示各題單題王精簡總覽 (僅於 FINISHED 顯示) -->
+          <div id="hostAllQuestionsMvpCard" class="card section-mt hidden">
+            <div class="section-header-row">
+              <h3>各題單題王總覽</h3>
+              <span class="text-muted text-sm">各題實拿最高分（含速度與連勝加成）</span>
+            </div>
+            <div id="hostAllQuestionsMvpList" class="mvp-summary-grid"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- 組別密碼 Modal -->
+  <div
+    id="passwordsModal"
+    class="modal-backdrop hidden"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="passwordsModalTitle"
+  >
+    <div class="modal-card card">
+      <div class="section-header-row">
+        <h3 id="passwordsModalTitle">組別密碼</h3>
+        <button type="button" id="btnClosePasswordsModal" class="btn btn-ghost btn-sm">
+          關閉 (Esc)
+        </button>
+      </div>
+      <p class="subtitle">可逐組複製密碼與入場連結，發送給各組參賽者。</p>
+      <div id="modalPasswordsList" class="modal-passwords-list"></div>
+      <div class="modal-footer-bar">
+        <button type="button" id="btnCopyAllPasswords" class="btn btn-secondary btn-sm">
+          複製全部
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 確認操作 Modal -->
+  <div
+    id="confirmModal"
+    class="modal-backdrop hidden"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="confirmModalTitle"
+    aria-describedby="confirmModalMessage"
+  >
+    <div class="modal-card modal-card-sm card">
+      <div class="section-header-row">
+        <h3 id="confirmModalTitle">確認操作</h3>
+        <button type="button" id="btnConfirmCloseX" class="btn btn-ghost btn-xs" aria-label="關閉">
+          關閉
+        </button>
+      </div>
+      <p id="confirmModalMessage" class="confirm-modal-body"></p>
+      <div class="confirm-modal-actions">
+        <button type="button" id="btnConfirmCancel" class="btn btn-secondary">取消</button>
+        <button type="button" id="btnConfirmProceed" class="btn btn-primary">確認</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 題目新增／編輯 Modal -->
+  <div
+    id="questionEditorModal"
+    class="modal-backdrop hidden"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="questionEditorModalTitle"
+  >
+    <div class="modal-card card">
+      <div class="section-header-row">
+        <h3 id="questionEditorModalTitle">新增題目</h3>
+        <button type="button" id="btnCloseQuestionModal" class="btn btn-ghost btn-sm">
+          關閉 (Esc)
+        </button>
+      </div>
+
+      <form id="questionEditorForm" class="form-stack" novalidate>
+        <input type="hidden" id="editQuestionId" />
+        <input type="hidden" id="editQuestionVersion" />
+
+        <div class="form-group">
+          <label for="inputQuestionTitle">題目標題（1–120 字）</label>
+          <input
+            type="text"
+            id="inputQuestionTitle"
+            maxlength="120"
+            placeholder="例如：活動報名資料可以拿來做行銷嗎？"
+            required
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="inputQuestionScenario">情境描述（1–600 字）</label>
+          <textarea
+            id="inputQuestionScenario"
+            rows="3"
+            maxlength="600"
+            placeholder="輸入完整情境背景與問題敘述…"
+            required
+          ></textarea>
+        </div>
+
+        <div class="grid-2">
+          <div class="form-group">
+            <label for="inputQuestionOptA">選項 A（1–200 字）</label>
+            <input type="text" id="inputQuestionOptA" maxlength="200" required />
+          </div>
+          <div class="form-group">
+            <label for="inputQuestionOptB">選項 B（1–200 字）</label>
+            <input type="text" id="inputQuestionOptB" maxlength="200" required />
+          </div>
+          <div class="form-group">
+            <label for="inputQuestionOptC">選項 C（1–200 字）</label>
+            <input type="text" id="inputQuestionOptC" maxlength="200" required />
+          </div>
+          <div class="form-group">
+            <label for="inputQuestionOptD">選項 D（1–200 字）</label>
+            <input type="text" id="inputQuestionOptD" maxlength="200" required />
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="form-group">
+            <label for="selectQuestionAnswer">正確答案</label>
+            <select id="selectQuestionAnswer" required>
+              <option value="A">A</option>
+              <option value="B">B</option>
+              <option value="C">C</option>
+              <option value="D">D</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="selectQuestionEnabled">出題狀態</label>
+            <select id="selectQuestionEnabled">
+              <option value="true">啟用（納入建立房間題庫）</option>
+              <option value="false">停用（暫不出題）</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="inputQuestionExplanation">答案解析（1–600 字）</label>
+          <textarea
+            id="inputQuestionExplanation"
+            rows="3"
+            maxlength="600"
+            placeholder="輸入答案解析或補充說明…"
+            required
+          ></textarea>
+        </div>
+
+        <p id="questionEditorError" class="field-error hidden" role="alert"></p>
+
+        <div class="confirm-modal-actions">
+          <button type="button" id="btnCancelQuestionModal" class="btn btn-secondary">
+            取消
+          </button>
+          <button type="submit" id="btnSaveQuestionSubmit" class="btn btn-primary">
+            儲存題目
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 管理者帳號新增／編輯 Modal -->
+  <div
+    id="adminEditorModal"
+    class="modal-backdrop hidden"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="adminEditorModalTitle"
+  >
+    <div class="modal-card modal-card-sm card">
+      <div class="section-header-row">
+        <h3 id="adminEditorModalTitle">新增管理者</h3>
+        <button type="button" id="btnCloseAdminModal" class="btn btn-ghost btn-sm">
+          關閉 (Esc)
+        </button>
+      </div>
+
+      <form id="adminEditorForm" class="form-stack" novalidate>
+        <input type="hidden" id="editAdminId" />
+
+        <div class="form-group">
+          <label for="inputAdminUsername">登入帳號（3–32 字英數字）</label>
+          <input
+            type="text"
+            id="inputAdminUsername"
+            maxlength="32"
+            placeholder="例如：host01"
+            required
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="inputAdminDisplayName">顯示名稱（1–32 字）</label>
+          <input
+            type="text"
+            id="inputAdminDisplayName"
+            maxlength="32"
+            placeholder="例如：第一教室主持人"
+            required
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="selectAdminRole">權限角色</label>
+          <select id="selectAdminRole" required>
+            <option value="host">一般主持人（建立與控管房間、檢視題目）</option>
+            <option value="super_admin">最高管理員（可編輯題庫與管理帳號）</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="inputAdminPassword" id="labelAdminPassword">登入密碼（至少 8 字元）</label>
+          <input
+            type="password"
+            id="inputAdminPassword"
+            maxlength="64"
+            placeholder="輸入至少 8 位數密碼"
+            autocomplete="new-password"
+          />
+        </div>
+
+        <p id="adminEditorError" class="field-error hidden" role="alert"></p>
+
+        <div class="confirm-modal-actions">
+          <button type="button" id="btnCancelAdminModal" class="btn btn-secondary">
+            取消
+          </button>
+          <button type="submit" id="btnSaveAdminSubmit" class="btn btn-primary">
+            儲存帳號
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
